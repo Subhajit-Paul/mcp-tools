@@ -1,5 +1,7 @@
 from fastmcp import FastMCP
 import subprocess
+import re
+import os
 
 mcp = FastMCP(name="CodebaseSearchServer")
     
@@ -24,7 +26,8 @@ def search_in_specific_file(path: str, pattern: str, file: str) -> str:
     """
     try:
         result = subprocess.run(
-            [f"cd {path} &&", "git", "grep", pattern, file],
+            ["git", "grep", pattern, file],
+            cwd=path,
             capture_output=True,
             text=True,
             check=True
@@ -51,7 +54,8 @@ def get_directory_tree(path: str) -> str:
     """
     try:
         result = subprocess.run(
-            [f"cd {path} &&", "tree"],
+            ["tree"],
+            cwd=path,
             capture_output=True,
             text=True,
             check=True
@@ -83,7 +87,8 @@ def search_in_specific_file_with_context(path: str, pattern: str, context_lines:
 
     try:
         result = subprocess.run(
-            [f"cd {path} &&", "git", "grep", f"-C{context_lines}", pattern, file],
+            ["git", "grep", f"-C{context_lines}", pattern, file],
+            cwd=path,
             capture_output=True,
             text=True,
             check=True
@@ -112,7 +117,8 @@ def list_all_signals(path: str, file: str = "") -> str:
     try:
         patterns = r"(wire|reg|logic|input|output)\s"
         result = subprocess.run(
-            [f"cd {path} &&", "git", "grep", "-E", patterns, file],
+            ["git", "grep", "-E", patterns, file],
+            cwd=path,
             capture_output=True,
             text=True,
             check=True
@@ -140,7 +146,8 @@ def find_signal_usage(path: str, signal: str) -> str:
     """
     try:
         result = subprocess.run(
-            [f"cd {path} &&", "git", "grep", "-n", signal],
+            ["git", "grep", "-n", signal],
+            cwd=path,
             capture_output=True,
             text=True,
             check=True
@@ -167,7 +174,8 @@ def list_all_modules(path: str) -> str:
     """
     try:
         result = subprocess.run(
-            [f"cd {path} &&", "git", "grep", "-E", "^module"],
+            ["git", "grep", "-E", "^module"],
+            cwd=path,
             capture_output=True,
             text=True,
             check=True
@@ -176,6 +184,80 @@ def list_all_modules(path: str) -> str:
     except subprocess.CalledProcessError as e:
         return e.stdout if e.stdout else 'No modules found.'
     
+    
+@mcp.tool
+def list_all_modules_with_details(path: str) -> str:
+    """
+    Lists all Verilog/SystemVerilog module definitions in the repository,
+    including parameters and port lists. Handles multiline module headers
+    without using parser libraries.
+    """
+
+    module_start_re = re.compile(r"^\s*module\s+(?P<modname>\w+)")
+    modules = []
+
+    # Walk through all files in repo
+    for root, _, files in os.walk(path):
+        for fname in files:
+            if not (fname.endswith(".v") or fname.endswith(".sv")):
+                continue
+            filepath = os.path.join(root, fname)
+
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                    inside_module = False
+                    buf = []
+                    paren_depth = 0
+
+                    for line in f:
+                        if not inside_module:
+                            m = module_start_re.match(line)
+                            if m:
+                                # Found start of a module
+                                inside_module = True
+                                buf = [line]
+                                paren_depth = line.count("(") - line.count(")")
+                        else:
+                            buf.append(line)
+                            paren_depth += line.count("(") - line.count(")")
+                            # End of module header (balanced and ends with ");")
+                            if paren_depth == 0 and line.strip().endswith(");"):
+                                full_decl = "".join(buf).replace("\n", " ")
+                                modules.append((filepath, full_decl.strip()))
+                                inside_module = False
+                                buf = []
+            except Exception as e:
+                continue  # skip unreadable files
+
+    # Post-process module declarations with regex
+    module_pattern = re.compile(
+        r"""module \s+
+             (?P<modname>\w+)                        # module name
+             (?: \s* \# \s* \( (?P<params>.*?) \) )? # optional #(params)
+             \s* \( (?P<ports>.*?) \) \s* ;          # (ports);
+          """,
+        re.VERBOSE,
+    )
+
+    output_lines = []
+    for filepath, decl in modules:
+        m = module_pattern.search(decl)
+        if not m:
+            continue
+        modname = m.group("modname")
+        params = m.group("params")
+        ports = m.group("ports")
+
+        if params:
+            params = params.strip()
+            params_text = f"#({params})"
+        else:
+            params_text = "(/* no parameters */)"
+
+        ports = ports.strip()
+        output_lines.append(f"{filepath}: module {modname} {params_text} ({ports})")
+
+    return "\n".join(output_lines) if output_lines else "No module definitions found."    
 
 if __name__ == "__main__":
     print("\n Starting Codebase Search Server...")
