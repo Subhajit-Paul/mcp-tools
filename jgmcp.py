@@ -56,3 +56,11 @@ def read_jaspergold_report():
         return report
     except Exception as e:
         return f"Error reading JasperGold report: {e}"
+    
+if __name__ == "__main__":
+    print("\n Starting JasperGold Server...")
+    mcp.run(
+        transport="sse",
+        host="0.0.0.0", 
+        port=6789
+    )
