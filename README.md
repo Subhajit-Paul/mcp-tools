@@ -22,11 +22,6 @@ fastmcp run <file>:mcp --transport sse --host 127.0.0.1 --port 6969
 - **`codebase-search.py`** - Searches Verilog/SystemVerilog repositories using `git grep`: find patterns (with optional context), list signal declarations, find signal usages, and list module definitions (including ports/parameters).
 - **`eq.py`** - Solves a univariate equation for its numerical roots using SymPy.
 - **`test.py`** - Minimal example server (`mul(a, b)`) used to sanity-check the FastMCP setup.
+- **`example.py`** - Beginner-friendly reference server demonstrating common `subprocess.run` patterns (capturing output, checking exit codes, error handling, timeouts, `cwd`, `env`, stdin), the technique the tools above use to shell out to `git`, `jg`, and `tree`.
 
-## example.py
-
-A standalone, dependency-free script demonstrating common `subprocess.run` usage patterns (capturing output, checking exit codes, error handling, timeouts, `cwd`, `env`, stdin). Not an MCP tool - just run it directly:
-
-```bash
-python3 example.py
-```
+`example.py` can also be run directly (`python3 example.py`) to execute every demo once and print the results, without starting a server.
